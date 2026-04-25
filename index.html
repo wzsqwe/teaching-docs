@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>教学文档管理系统</title>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -816,20 +817,108 @@
         return;
       }
 
-      // 有文件时，直接保存记录（文件名已记录，后续用Python工具解析内容）
-      const id = 'doc_' + Date.now();
-      const { error } = await sb.from('td_documents').insert({
-        id, course_id: currentCourse.id, doc_type: docType,
-        year: parseInt(year) || new Date().getFullYear(),
-        title: title,
-        content_json: JSON.stringify({ _placeholder: true }),
-        original_file_name: uploadedFile.name
-      });
+      // 有文件时，读取并解析内容，然后保存
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const arrayBuffer = e.target.result;
+        
+        // 前端直接解析 Word 文件
+        showToast('📖 正在解析文档内容...');
+        let parsed = { _placeholder: true };
+        try {
+          parsed = await parseDocInBrowser(arrayBuffer);
+        } catch (err) {
+          console.warn('解析失败，使用占位符:', err);
+        }
+        
+        // 分块转换base64，避免栈溢出
+        const base64 = arrayBufferToBase64(arrayBuffer);
 
-      if (error) { showToast('保存失败'); console.error(error); return; }
-      showToast('文档已保存，请用Python工具解析内容');
-      closeDrawer();
-      loadTabContent();
+        const id = 'doc_' + Date.now();
+        const { error } = await sb.from('td_documents').insert({
+          id, course_id: currentCourse.id, doc_type: docType,
+          year: parseInt(year) || new Date().getFullYear(),
+          title: title,
+          content_json: JSON.stringify(parsed),
+          original_file_name: uploadedFile.name,
+          file_data: base64
+        });
+
+        if (error) { showToast('保存失败'); console.error(error); return; }
+        showToast('✅ 文档已保存并解析完成！');
+        closeDrawer();
+        loadTabContent();
+      };
+      reader.readAsArrayBuffer(uploadedFile);
+    }
+    
+    // 在浏览器端解析 Word 文档
+    async function parseDocInBrowser(arrayBuffer) {
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      const text = result.value;
+      const parsed = parseDocumentText(text);
+      return parsed;
+    }
+    
+    // 解析文本内容，提取关键字段
+    function parseDocumentText(text) {
+      const result = {};
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      
+      // 提取课程名称
+      const titleMatch = text.match(/课程名称[：:]\s*(.+)/i) || 
+                         text.match(/^《(.+?)》/) ||
+                         text.match(/^(.+?)教学大纲/);
+      if (titleMatch) result.courseName = titleMatch[1].trim();
+      
+      // 提取学分
+      const creditMatch = text.match(/学分[：:]\s*(\d+\.?\d*)/);
+      if (creditMatch) result.credit = parseFloat(creditMatch[1]);
+      
+      // 提取学时
+      const hoursMatch = text.match(/学时[：:]\s*(\d+)/);
+      if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
+      
+      // 提取先修课程
+      const prereqMatch = text.match(/先修课程[：:]\s*(.+)/i);
+      if (prereqMatch) result.prerequisites = prereqMatch[1].trim();
+      
+      // 提取教学目标
+      const objectiveMatch = text.match(/教学目标[：:]([\s\S]*?)(?=教学重难点|$)/i) ||
+                             text.match(/培养目标[：:]([\s\S]*?)(?=教学重难点|$)/i);
+      if (objectiveMatch) result.objectives = objectiveMatch[1].trim();
+      
+      // 提取教学重难点
+      const focusMatch = text.match(/教学重难点[：:]([\s\S]*?)(?=教学内容与方法|$)/i) ||
+                         text.match(/重点难点[：:]([\s\S]*?)(?=教学内容与方法|$)/i);
+      if (focusMatch) result.teachingFocus = focusMatch[1].trim();
+      
+      // 提取考核方式
+      const assessMatch = text.match(/考核方式[：:]\s*(.+)/i) ||
+                          text.match(/成绩评定[：:]\s*(.+)/i);
+      if (assessMatch) result.assessment = assessMatch[1].trim();
+      
+      // 提取教材
+      const textbookMatch = text.match(/(?:教材|参考书目)[：:]\s*([\s\S]*?)(?=教学大纲|$)/i);
+      if (textbookMatch) result.textbook = textbookMatch[1].trim();
+      
+      // 保留原始文本
+      result._rawText = text.substring(0, 5000);
+      result._parsedAt = new Date().toISOString();
+      
+      return result;
+    }
+
+    // 分块转换ArrayBuffer为Base64，避免栈溢出
+    function arrayBufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i += 10000) {
+        const chunk = bytes.slice(i, Math.min(i + 10000, len));
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
     }
 
     // ===== 打开文档抽屉 =====
@@ -837,49 +926,197 @@
       const doc = currentDocs[index];
       document.getElementById('drawer-title').textContent = doc.title || '文档详情';
       const content = JSON.parse(doc.content_json || '{}');
+      
+      // 字段名称映射（显示更友好）
+      const fieldLabels = {
+        courseName: '课程名称',
+        credit: '学分',
+        hours: '学时',
+        prerequisites: '先修课程',
+        objectives: '教学目标',
+        teachingFocus: '教学重难点',
+        assessment: '考核方式',
+        textbook: '教材/参考书',
+        _rawText: '原始文本'
+      };
 
       // 渲染内容字段
       let fieldsHtml = '';
-      for (const [key, value] of Object.entries(content)) {
-        if (typeof value === 'string' && value.length > 200) {
-          fieldsHtml += `
-            <div class="form-group">
-              <label class="form-label">${key}</label>
-              <textarea class="form-textarea" readonly>${value}</textarea>
-            </div>
-          `;
-        } else if (typeof value === 'string') {
-          fieldsHtml += `
-            <div class="form-group">
-              <label class="form-label">${key}</label>
-              <input type="text" class="form-input" value="${value}" readonly>
-            </div>
-          `;
+      const validFields = Object.entries(content).filter(([key]) => !key.startsWith('_'));
+      
+      if (validFields.length > 0) {
+        for (const [key, value] of validFields) {
+          const label = fieldLabels[key] || key;
+          if (typeof value === 'string' && value.length > 200) {
+            fieldsHtml += `
+              <div class="form-group">
+                <label class="form-label">${label}</label>
+                <textarea class="form-textarea" rows="4" readonly>${escapeHtml(value)}</textarea>
+              </div>
+            `;
+          } else if (typeof value === 'string') {
+            fieldsHtml += `
+              <div class="form-group">
+                <label class="form-label">${label}</label>
+                <input type="text" class="form-input" value="${escapeHtml(value)}" readonly>
+              </div>
+            `;
+          } else if (typeof value === 'number') {
+            fieldsHtml += `
+              <div class="form-group">
+                <label class="form-label">${label}</label>
+                <input type="text" class="form-input" value="${value}" readonly>
+              </div>
+            `;
+          }
         }
       }
 
-      if (!fieldsHtml) {
-        fieldsHtml = `
-          <div class="empty-state" style="padding:40px;">
-            <div class="empty-state-icon">📄</div>
-            <div class="empty-state-text">该文档内容尚未解析<br>请使用Python工具解析Word文件</div>
-          </div>
-        `;
-      }
+      const infoSection = `
+        <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
+          <div style="margin-bottom:8px;"><strong>原始文件：</strong>${doc.original_file_name || '无'}</div>
+          <div style="margin-bottom:8px;"><strong>上传时间：</strong>${new Date(doc.created_at).toLocaleString('zh-CN')}</div>
+          <div><strong>解析状态：</strong>${content._parsedAt ? '✅ 已解析' : '⏳ 待解析'}</div>
+        </div>
+      `;
+
+      // 操作按钮
+      const actionsHtml = `
+        <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+          ${doc.file_data ? `
+            <button class="btn" onclick="downloadDoc('${doc.id}')">
+              📥 下载原文件
+            </button>
+            <button class="btn btn-secondary" onclick="reuploadDoc('${doc.id}')">
+              🔄 重新上传
+            </button>
+          ` : `
+            <button class="btn btn-secondary" onclick="uploadFileForDoc('${doc.id}')">
+              📤 上传文件
+            </button>
+          `}
+          <button class="btn btn-danger" onclick="deleteDoc('${doc.id}')">
+            🗑️ 删除文档
+          </button>
+        </div>
+      `;
 
       document.getElementById('drawer-body').innerHTML = `
         <div style="margin-bottom:20px;">
           <span class="tag">${doc.doc_type}</span>
           <span style="font-size:12px;color:#86868b;margin-left:8px;">${doc.year || ''}年</span>
         </div>
-        ${fieldsHtml}
-        <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
-          <div style="margin-bottom:8px;"><strong>原始文件：</strong>${doc.original_file_name || '无'}</div>
-          <div><strong>上传时间：</strong>${new Date(doc.created_at).toLocaleString('zh-CN')}</div>
-        </div>
+        ${validFields.length > 0 ? fieldsHtml : `
+          <div class="empty-state" style="padding:40px;">
+            <div class="empty-state-icon">📄</div>
+            <div class="empty-state-text">该文档尚未解析<br>请上传 Word 文件自动解析</div>
+          </div>
+        `}
+        ${infoSection}
+        ${actionsHtml}
       `;
       document.getElementById('drawer-overlay').classList.add('show');
       document.getElementById('drawer').classList.add('show');
+    }
+    
+    // HTML转义
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ===== 下载文档 =====
+    async function downloadDoc(docId) {
+      const { data, error } = await sb.from('td_documents').select('file_data, original_file_name').eq('id', docId).single();
+      if (error || !data.file_data) {
+        showToast('文件不存在');
+        return;
+      }
+      
+      try {
+        const binary = atob(data.file_data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = data.original_file_name || 'document.docx';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('下载成功');
+      } catch (e) {
+        showToast('下载失败');
+        console.error(e);
+      }
+    }
+
+    // ===== 删除文档 =====
+    async function deleteDoc(docId) {
+      if (!confirm('确定要删除这个文档吗？此操作不可恢复。')) return;
+      
+      const { error } = await sb.from('td_documents').delete().eq('id', docId);
+      if (error) {
+        showToast('删除失败');
+        console.error(error);
+        return;
+      }
+      showToast('文档已删除');
+      closeDrawer();
+      loadTabContent();
+    }
+
+    // ===== 为已有文档重新上传/上传文件 =====
+    function reuploadDoc(docId) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.docx,.doc';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        showToast('📖 正在解析并更新...');
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          const arrayBuffer = evt.target.result;
+          
+          // 解析内容
+          let parsed = { _placeholder: true };
+          try {
+            parsed = await parseDocInBrowser(arrayBuffer);
+          } catch (err) {
+            console.warn('解析失败:', err);
+          }
+          
+          // 转换base64
+          const base64 = arrayBufferToBase64(arrayBuffer);
+          
+          const { error } = await sb.from('td_documents').update({
+            file_data: base64,
+            original_file_name: file.name,
+            content_json: JSON.stringify(parsed),
+            updated_at: new Date().toISOString()
+          }).eq('id', docId);
+          
+          if (error) {
+            showToast('更新失败');
+            console.error(error);
+            return;
+          }
+          showToast('✅ 文档已更新');
+          closeDrawer();
+          loadTabContent();
+        };
+        reader.readAsArrayBuffer(file);
+      };
+      input.click();
+    }
+    
+    function uploadFileForDoc(docId) {
+      reuploadDoc(docId);
     }
 
     function closeDrawer() {
