@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教学文档管理系统</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 顶部导航 */
+    .topbar {
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-brand { font-size: 17px; font-weight: 600; }
+    .topbar-nav { display: flex; gap: 4px; margin-left: 32px; }
+    .topbar-nav button {
+      background: transparent;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 980px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #86868b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .topbar-nav button:hover { background: rgba(0,0,0,0.04); color: #1d1d1f; }
+    .topbar-nav button.active { background: #0071e3; color: white; }
+
+    .main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+    /* 课程卡片 */
+    .course-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .course-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 2px solid transparent;
+    }
+    .course-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .course-card.active { border-color: #0071e3; }
+    .course-card-icon { font-size: 32px; margin-bottom: 12px; }
+    .course-card-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .course-card-desc { font-size: 13px; color: #86868b; }
+    .course-card-count { font-size: 12px; color: #b0b0b0; margin-top: 8px; }
+
+    /* 返回按钮 */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      font-size: 14px;
+      color: #0071e3;
+      cursor: pointer;
+      margin-bottom: 20px;
+      padding: 6px 0;
+    }
+    .back-btn:hover { opacity: 0.7; }
+
+    /* Tab导航 */
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: rgba(0,0,0,0.04);
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #86868b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { background: rgba(0,0,0,0.08); color: #1d1d1f; }
+    .tab-btn.active { background: #0071e3; color: white; }
+
+    /* 文档列表 */
+    .doc-list { display: flex; flex-direction: column; gap: 8px; }
+    .doc-item {
+      background: white;
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .doc-item:hover { background: rgba(0,113,227,0.03); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .doc-item-icon { font-size: 24px; }
+    .doc-item-info { flex: 1; }
+    .doc-item-title { font-size: 15px; font-weight: 600; color: #1d1d1f; }
+    .doc-item-meta { font-size: 12px; color: #86868b; margin-top: 2px; }
+    .doc-item-badge {
+      background: #f0f0f5;
+      color: #86868b;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    /* 按钮 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0071e3;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 980px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #0077ed; }
+    .btn-secondary { background: rgba(0,0,0,0.06); color: #1d1d1f; }
+    .btn-secondary:hover { background: rgba(0,0,0,0.1); }
+    .btn-danger { background: #ff3b30; }
+    .btn-success { background: #34c759; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    /* 模态框 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 20px;
+      width: 100%;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-title { font-size: 18px; font-weight: 600; }
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 20px;
+      color: #86868b;
+      cursor: pointer;
+      padding: 4px;
+    }
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid rgba(0,0,0,0.06);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* 表单 */
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #86868b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      border: 1px solid rgba(0,0,0,0.1);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      outline: none;
+      border-color: #0071e3;
+    }
+    .form-textarea { min-height: 120px; resize: vertical; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* 字段编辑器 */
+    .field-section {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .field-section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1d1d1f;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 试卷表格 */
+    .question-table { width: 100%; border-collapse: collapse; }
+    .question-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #86868b;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+    .question-table td {
+      padding: 12px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid rgba(0,0,0,0.04);
+      vertical-align: top;
+    }
+    .question-table tr:last-child td { border-bottom: none; }
+
+    /* 题目标签 */
+    .tag {
+      display: inline-block;
+      background: rgba(0,113,227,0.1);
+      color: #0071e3;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-right: 4px;
+    }
+    .tag-difficulty-easy { background: rgba(52,199,89,0.1); color: #34c759; }
+    .tag-difficulty-hard { background: rgba(255,59,48,0.1); color: #ff3b30; }
+
+    /* 智能填入 */
+    .match-item {
+      background: #f8f8fa;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .match-field {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0071e3;
+      min-width: 120px;
+    }
+    .match-preview {
+      flex: 1;
+      font-size: 13px;
+      color: #555;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(0,0,0,0.06);
+      max-height: 60px;
+      overflow: hidden;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #86868b;
+    }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state-text { font-size: 15px; margin-bottom: 20px; }
+
+    /* 上传区 */
+    .upload-zone {
+      border: 2px dashed rgba(0,0,0,0.1);
+      border-radius: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .upload-zone:hover { border-color: #0071e3; background: rgba(0,113,227,0.02); }
+    .upload-zone-icon { font-size: 32px; margin-bottom: 12px; }
+    .upload-zone-text { font-size: 14px; color: #86868b; }
+    .upload-zone-text strong { color: #0071e3; }
+
+    /* 工具栏 */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    /* 抽屉 */
+    .drawer-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+    .drawer-overlay.show { display: block; }
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      max-width: 600px;
+      background: white;
+      transform: translateX(100%);
+      transition: transform 0.3s;
+      overflow-y: auto;
+      z-index: 1001;
+    }
+    .drawer.show { transform: translateX(0); }
+    .drawer-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: white;
+    }
+    .drawer-title { font-size: 18px; font-weight: 600; }
+    .drawer-body { padding: 24px; }
+
+    /* 加载状态 */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: #86868b;
+    }
+    .loading::before {
+      content: '';
+      width: 20px;
+      height: 20px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #0071e3;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 提示 */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1d1d1f;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      z-index: 2000;
+      opacity: 0;
+      transition: all 0.3s;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* 响应式 */
+    @media (max-width: 768px) {
+      .course-grid { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+      .drawer { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="topbar">
+    <span class="topbar-brand">📚 教学文档管理</span>
+    <nav class="topbar-nav">
+      <button class="active" id="nav-courses" onclick="showCourses()">课程</button>
+      <button id="nav-templates" onclick="showTemplates()">模板库</button>
+    </nav>
+  </header>
+
+  <main class="main" id="app">
+    <!-- 首页：课程列表 -->
+    <div id="page-courses">
+      <h1 class="page-title" style="font-size:28px;font-weight:700;margin-bottom:24px;">我的课程</h1>
+      <div class="course-grid" id="course-grid">
+        <div class="loading">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 课程详情页 -->
+    <div id="page-course-detail" style="display:none;">
+      <button class="back-btn" onclick="showCourses()">← 返回课程列表</button>
+      <h1 class="page-title" id="course-detail-title" style="font-size:24px;margin-bottom:20px;"></h1>
+      <div class="tab-nav" id="tab-nav"></div>
+      <div id="tab-content"></div>
+    </div>
+
+    <!-- 模板库页 -->
+    <div id="page-templates" style="display:none;">
+      <h1 class="page-title" style="font-size:28px;font-weight:700;margin-bottom:24px;">教务处模板</h1>
+      <div class="toolbar">
+        <span style="font-size:14px;color:#86868b;">存储历年教务处发来的模板文件</span>
+        <button class="btn" onclick="openUploadTemplate()">➕ 上传新模板</button>
+      </div>
+      <div id="template-list" class="doc-list"></div>
+    </div>
+  </main>
+
+  <!-- 文档查看/编辑抽屉 -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <span class="drawer-title" id="drawer-title">文档详情</span>
+      <button class="modal-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </div>
+
+  <!-- 智能填入模态框 -->
+  <div class="modal-overlay" id="modal-fill">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">🔄 智能填入</span>
+        <button class="modal-close" onclick="closeFillModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modal-fill-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeFillModal()">取消</button>
+        <button class="btn btn-success" onclick="confirmFill()">✅ 确认填入并导出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 试卷组卷模态框 -->
+  <div class="modal-overlay" id="modal-exam">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">📝 生成AB卷</span>
+        <button class="modal-close" onclick="closeExamModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modal-exam-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeExamModal()">取消</button>
+        <button class="btn btn-success" onclick="generateExam()">🎲 随机生成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast提示 -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ===== Supabase 初始化 =====
+    const SUPABASE_URL = 'https://yxfjmkdwfpdiscwkpljd.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4Zmpta2R3ZnBkaXNjd2twbGpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk0NTE4MDB9.L7u5iKvh6xkpdFH_1yk6L8L5t5yKkJrLdLnrLqYLG4U';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // ===== 全局状态 =====
+    let currentCourse = null;
+    let currentTab = 'outline';
+    let courses = [];
+    let currentDocs = [];
+    let currentQuestions = [];
+    let templates = [];
+
+    // ===== 页面切换 =====
+    function showCourses() {
+      document.getElementById('page-courses').style.display = 'block';
+      document.getElementById('page-course-detail').style.display = 'none';
+      document.getElementById('page-templates').style.display = 'none';
+      document.querySelectorAll('.topbar-nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById('nav-courses').classList.add('active');
+      loadCourses();
+    }
+
+    function showTemplates() {
+      document.getElementById('page-courses').style.display = 'none';
+      document.getElementById('page-course-detail').style.display = 'none';
+      document.getElementById('page-templates').style.display = 'block';
+      document.querySelectorAll('.topbar-nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById('nav-templates').classList.add('active');
+      loadTemplates();
+    }
+
+    // ===== 加载课程列表 =====
+    async function loadCourses() {
+      const { data, error } = await sb.from('td_courses').select('*').order('created_at');
+      if (error) { showToast('加载失败'); return; }
+      courses = data || [];
+      renderCourses();
+    }
+
+    function renderCourses() {
+      const icons = { storyfilm: '🎬', cinematography: '📷' };
+      const grid = document.getElementById('course-grid');
+      if (courses.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📚</div><div class="empty-state-text">暂无课程，请先初始化数据库</div></div>';
+        return;
+      }
+      grid.innerHTML = courses.map(c => `
+        <div class="course-card" onclick="openCourse('${c.id}')">
+          <div class="course-card-icon">${icons[c.id] || '📄'}</div>
+          <div class="course-card-name">${c.name}</div>
+          <div class="course-card-desc">${c.description || ''}</div>
+        </div>
+      `).join('');
+    }
+
+    // ===== 打开课程详情 =====
+    async function openCourse(courseId) {
+      currentCourse = courses.find(c => c.id === courseId);
+      document.getElementById('page-courses').style.display = 'none';
+      document.getElementById('page-course-detail').style.display = 'block';
+      document.getElementById('course-detail-title').textContent = currentCourse.name;
+      renderTabs();
+      loadTabContent();
+    }
+
+    function renderTabs() {
+      const tabs = [
+        { id: 'outline', label: '📋 大纲' },
+        { id: 'teaching', label: '📖 教案' },
+        { id: 'guide', label: '📕 指导书' },
+        { id: 'manual', label: '📘 教学手册' },
+        { id: 'application', label: '📄 申报表', storyfilm: true },
+        { id: 'exam', label: '📝 试卷', cinematography: true }
+      ];
+      const visibleTabs = tabs.filter(t => !t.storyfilm || currentCourse.id === 'storyfilm');
+      const nav = document.getElementById('tab-nav');
+      nav.innerHTML = visibleTabs.map(t => `
+        <button class="tab-btn ${t.id === currentTab ? 'active' : ''}" onclick="switchTab('${t.id}')">${t.label}</button>
+      `).join('');
+    }
+
+    function switchTab(tabId) {
+      currentTab = tabId;
+      renderTabs();
+      loadTabContent();
+    }
+
+    // ===== 加载Tab内容 =====
+    async function loadTabContent() {
+      const content = document.getElementById('tab-content');
+      content.innerHTML = '<div class="loading">加载中...</div>';
+
+      const typeMap = {
+        outline: '大纲',
+        teaching: '教案',
+        guide: '指导书',
+        manual: '教学手册',
+        application: '申报表',
+        exam: '试卷'
+      };
+      const docType = typeMap[currentTab];
+
+      if (currentTab === 'exam') {
+        loadQuestions();
+        return;
+      }
+
+      const { data, error } = await sb.from('td_documents')
+        .select('*')
+        .eq('course_id', currentCourse.id)
+        .eq('doc_type', docType)
+        .order('year', { ascending: false });
+
+      if (error) { content.innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+
+      currentDocs = data || [];
+
+      if (currentDocs.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <div class="empty-state-text">暂无${docType}文档</div>
+            <button class="btn" onclick="openUploadDoc()">➕ 上传${docType}</button>
+          </div>
+        `;
+        return;
+      }
+
+      const icons = {
+        outline: '📋', teaching: '📖', guide: '📕',
+        manual: '📘', application: '📄'
+      };
+
+      content.innerHTML = `
+        <div class="toolbar">
+          <span style="font-size:14px;color:#86868b;">共 ${currentDocs.length} 份</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn" onclick="openFillModal()">🔄 填入新模板</button>
+            <button class="btn btn-secondary" onclick="openUploadDoc()">➕ 新建/上传</button>
+          </div>
+        </div>
+        <div class="doc-list">
+          ${currentDocs.map((d, i) => `
+            <div class="doc-item" onclick="openDocDrawer(${i})">
+              <div class="doc-item-icon">${icons[currentTab] || '📄'}</div>
+              <div class="doc-item-info">
+                <div class="doc-item-title">${d.title || docType}</div>
+                <div class="doc-item-meta">${d.year || '无年份'} · 更新于 ${new Date(d.updated_at).toLocaleDateString('zh-CN')}</div>
+              </div>
+              <span class="doc-item-badge">v${currentDocs.length - i}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // ===== 加载试卷 =====
+    async function loadQuestions() {
+      const content = document.getElementById('tab-content');
+      content.innerHTML = '<div class="loading">加载中...</div>';
+
+      const { data, error } = await sb.from('td_questions')
+        .select('*')
+        .eq('course_id', currentCourse.id)
+        .order('created_at', { ascending: false });
+
+      if (error) { content.innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+      currentQuestions = data || [];
+
+      if (currentQuestions.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <div class="empty-state-text">暂无试卷题库</div>
+            <button class="btn" onclick="openUploadExam()">➕ 上传试卷</button>
+          </div>
+        `;
+        return;
+      }
+
+      const typeNames = { '选择': '选择题', '填空': '填空题', '简答': '简答题', '论述': '论述题', '实践': '实践题' };
+
+      content.innerHTML = `
+        <div class="toolbar">
+          <span style="font-size:14px;color:#86868b;">共 ${currentQuestions.length} 道题目</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-success" onclick="openExamModal()">🎲 生成AB卷</button>
+            <button class="btn btn-secondary" onclick="openUploadExam()">➕ 上传/添加题目</button>
+          </div>
+        </div>
+        <div style="background:white;border-radius:12px;overflow:hidden;">
+          <table class="question-table">
+            <thead>
+              <tr>
+                <th style="width:60px;">题号</th>
+                <th style="width:80px;">题型</th>
+                <th>题目内容</th>
+                <th style="width:60px;">分值</th>
+                <th style="width:100px;">难度</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${currentQuestions.map((q, i) => `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td><span class="tag">${typeNames[q.question_type] || q.question_type}</span></td>
+                  <td>${q.content}</td>
+                  <td>${q.score}分</td>
+                  <td>
+                    <span class="tag ${q.difficulty === '易' ? 'tag-difficulty-easy' : q.difficulty === '难' ? 'tag-difficulty-hard' : ''}">
+                      ${q.difficulty}
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // ===== 上传文档 =====
+    function openUploadDoc() {
+      const typeMap = {
+        outline: '大纲', teaching: '教案', guide: '指导书',
+        manual: '教学手册', application: '申报表'
+      };
+      const docType = typeMap[currentTab];
+      document.getElementById('drawer-title').textContent = `上传${docType}`;
+      document.getElementById('drawer-body').innerHTML = `
+        <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+          <div class="upload-zone-icon">📤</div>
+          <div class="upload-zone-text">点击选择 Word 文件<br><strong>或拖拽文件到此处</strong></div>
+        </div>
+        <input type="file" id="file-input" accept=".docx,.doc" style="display:none" onchange="handleFileUpload(this)">
+        <div style="margin-top:20px;">
+          <div class="form-group">
+            <label class="form-label">年份</label>
+            <input type="number" class="form-input" id="doc-year" placeholder="如：2026" value="${new Date().getFullYear()}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">文档标题</label>
+            <input type="text" class="form-input" id="doc-title" placeholder="如：故事片创作实践大纲">
+          </div>
+          <button class="btn" style="width:100%;margin-top:12px;" onclick="saveDocFromFile()">
+            💾 保存文档
+          </button>
+          <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;color:#666;">
+            <strong style="color:#1d1d1f;">提示：</strong>上传后系统会自动解析Word内容并结构化存储，方便以后重复使用。
+          </div>
+        </div>
+      `;
+      document.getElementById('drawer-overlay').classList.add('show');
+      document.getElementById('drawer').classList.add('show');
+    }
+
+    let uploadedFile = null;
+    function handleFileUpload(input) {
+      if (input.files.length > 0) {
+        uploadedFile = input.files[0];
+        document.querySelector('.upload-zone-text').innerHTML =
+          `<strong>已选择：${uploadedFile.name}</strong><br>点击可重新选择`;
+      }
+    }
+
+    async function saveDocFromFile() {
+      if (!uploadedFile) { showToast('请先选择文件'); return; }
+      const year = document.getElementById('doc-year').value;
+      const title = document.getElementById('doc-title').value;
+      const typeMap = {
+        outline: '大纲', teaching: '教案', guide: '指导书',
+        manual: '教学手册', application: '申报表'
+      };
+      const docType = typeMap[currentTab];
+
+      // 读取文件内容并解析
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const arrayBuffer = e.target.result;
+        // 将文件转为 base64 存储
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+        const id = 'doc_' + Date.now();
+        const { error } = await sb.from('td_documents').insert({
+          id, course_id: currentCourse.id, doc_type: docType,
+          year: parseInt(year), title: title || `${currentCourse.name}${docType}`,
+          content_json: JSON.stringify({ _placeholder: true }), // 后续用Python解析
+          original_file_name: uploadedFile.name
+        });
+
+        if (error) { showToast('保存失败'); return; }
+        showToast('文档已保存，请用Python工具解析内容');
+        closeDrawer();
+        loadTabContent();
+      };
+      reader.readAsArrayBuffer(uploadedFile);
+    }
+
+    // ===== 打开文档抽屉 =====
+    function openDocDrawer(index) {
+      const doc = currentDocs[index];
+      document.getElementById('drawer-title').textContent = doc.title || '文档详情';
+      const content = JSON.parse(doc.content_json || '{}');
+
+      // 渲染内容字段
+      let fieldsHtml = '';
+      for (const [key, value] of Object.entries(content)) {
+        if (typeof value === 'string' && value.length > 200) {
+          fieldsHtml += `
+            <div class="form-group">
+              <label class="form-label">${key}</label>
+              <textarea class="form-textarea" readonly>${value}</textarea>
+            </div>
+          `;
+        } else if (typeof value === 'string') {
+          fieldsHtml += `
+            <div class="form-group">
+              <label class="form-label">${key}</label>
+              <input type="text" class="form-input" value="${value}" readonly>
+            </div>
+          `;
+        }
+      }
+
+      if (!fieldsHtml) {
+        fieldsHtml = `
+          <div class="empty-state" style="padding:40px;">
+            <div class="empty-state-icon">📄</div>
+            <div class="empty-state-text">该文档内容尚未解析<br>请使用Python工具解析Word文件</div>
+          </div>
+        `;
+      }
+
+      document.getElementById('drawer-body').innerHTML = `
+        <div style="margin-bottom:20px;">
+          <span class="tag">${doc.doc_type}</span>
+          <span style="font-size:12px;color:#86868b;margin-left:8px;">${doc.year || ''}年</span>
+        </div>
+        ${fieldsHtml}
+        <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
+          <div style="margin-bottom:8px;"><strong>原始文件：</strong>${doc.original_file_name || '无'}</div>
+          <div><strong>上传时间：</strong>${new Date(doc.created_at).toLocaleString('zh-CN')}</div>
+        </div>
+      `;
+      document.getElementById('drawer-overlay').classList.add('show');
+      document.getElementById('drawer').classList.add('show');
+    }
+
+    function closeDrawer() {
+      document.getElementById('drawer-overlay').classList.remove('show');
+      document.getElementById('drawer').classList.remove('show');
+      uploadedFile = null;
+    }
+
+    // ===== 智能填入 =====
+    function openFillModal() {
+      const body = document.getElementById('modal-fill-body');
+      body.innerHTML = `
+        <div style="margin-bottom:20px;">
+          <p style="font-size:14px;color:#666;margin-bottom:16px;">
+            上传教务处发来的新模板，系统会自动将你的内容填入对应位置。
+          </p>
+          <div class="upload-zone" onclick="document.getElementById('template-file-input').click()">
+            <div class="upload-zone-icon">📄</div>
+            <div class="upload-zone-text">点击上传新模板 Word 文件</div>
+          </div>
+          <input type="file" id="template-file-input" accept=".docx,.doc" style="display:none"
+            onchange="handleTemplateSelect(this)">
+          <div id="template-info" style="margin-top:16px;"></div>
+        </div>
+        <div id="match-preview" style="margin-top:20px;"></div>
+      `;
+      document.getElementById('modal-fill').classList.add('show');
+    }
+
+    function closeFillModal() {
+      document.getElementById('modal-fill').classList.remove('show');
+    }
+
+    let selectedTemplateFile = null;
+    function handleTemplateSelect(input) {
+      if (input.files.length > 0) {
+        selectedTemplateFile = input.files[0];
+        document.getElementById('template-info').innerHTML = `
+          <div style="background:#f0f9eb;border:1px solid #34c759;border-radius:8px;padding:12px;font-size:13px;">
+            ✅ 已选择：${selectedTemplateFile.name}
+          </div>
+        `;
+        // 模拟智能匹配预览
+        showMatchPreview();
+      }
+    }
+
+    function showMatchPreview() {
+      const preview = document.getElementById('match-preview');
+      // 获取当前课程的最新大纲内容
+      const typeMap = {
+        outline: '大纲', teaching: '教案', guide: '指导书',
+        manual: '教学手册', application: '申报表'
+      };
+
+      preview.innerHTML = `
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">🔍 匹配预览</div>
+        ${['课程名称', '学时/学分', '课程简介', '素质目标', '知识目标', '能力目标', '考核方式'].map(field => `
+          <div class="match-item">
+            <div class="match-field">${field}</div>
+            <div class="match-preview">${getMatchContent(field)}</div>
+          </div>
+        `).join('')}
+        <div style="margin-top:16px;padding:12px;background:#fff8e6;border-radius:8px;font-size:12px;color:#856404;">
+          ⚠️ 这是基于最新文档的预览，实际填入时请确认每个字段是否正确匹配。
+        </div>
+      `;
+    }
+
+    function getMatchContent(field) {
+      const latestDoc = currentDocs[0];
+      if (!latestDoc) return '（无数据）';
+      const content = JSON.parse(latestDoc.content_json || '{}');
+
+      // 简化的字段匹配
+      const fieldMap = {
+        '课程名称': '课程名称',
+        '学时/学分': '学时',
+        '课程简介': '课程简介',
+        '素质目标': '素质目标',
+        '知识目标': '知识目标',
+        '能力目标': '能力目标',
+        '考核方式': '考核方式'
+      };
+
+      const value = content[fieldMap[field]] || '（未解析）';
+      return value.substring(0, 100) + (value.length > 100 ? '...' : '');
+    }
+
+    async function confirmFill() {
+      if (!selectedTemplateFile) { showToast('请先上传模板文件'); return; }
+      showToast('模板已记录，稍后可下载填入后的文件');
+      closeFillModal();
+    }
+
+    // ===== 试卷组卷 =====
+    function openExamModal() {
+      const body = document.getElementById('modal-exam-body');
+      body.innerHTML = `
+        <p style="font-size:14px;color:#666;margin-bottom:20px;">
+          设置各题型数量，系统将从题库中随机抽取生成AB卷。
+        </p>
+        <div class="form-group">
+          <label class="form-label">选择题（每题分值）</label>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <input type="number" class="form-input" id="exam-select-count" placeholder="数量" style="width:100px;" value="10">
+            <span>×</span>
+            <input type="number" class="form-input" id="exam-select-score" placeholder="分值" style="width:80px;" value="2">
+            <span>分</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">填空题（每题分值）</label>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <input type="number" class="form-input" id="exam-blank-count" placeholder="数量" style="width:100px;" value="5">
+            <span>×</span>
+            <input type="number" class="form-input" id="exam-blank-score" placeholder="分值" style="width:80px;" value="4">
+            <span>分</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">简答题（每题分值）</label>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <input type="number" class="form-input" id="exam-short-count" placeholder="数量" style="width:100px;" value="4">
+            <span>×</span>
+            <input type="number" class="form-input" id="exam-short-score" placeholder="分值" style="width:80px;" value="10">
+            <span>分</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">论述题（每题分值）</label>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <input type="number" class="form-input" id="exam-essay-count" placeholder="数量" style="width:100px;" value="2">
+            <span>×</span>
+            <input type="number" class="form-input" id="exam-essay-score" placeholder="分值" style="width:80px;" value="15">
+            <span>分</span>
+          </div>
+        </div>
+        <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
+          <strong style="color:#1d1d1f;">说明：</strong>系统将从题库中随机抽取题目，A卷和B卷使用不同随机种子，确保题目不完全相同。
+        </div>
+      `;
+      document.getElementById('modal-exam').classList.add('show');
+    }
+
+    function closeExamModal() {
+      document.getElementById('modal-exam').classList.remove('show');
+    }
+
+    async function generateExam() {
+      const counts = {
+        '选择': parseInt(document.getElementById('exam-select-count').value) || 0,
+        '填空': parseInt(document.getElementById('exam-blank-count').value) || 0,
+        '简答': parseInt(document.getElementById('exam-short-count').value) || 0,
+        '论述': parseInt(document.getElementById('exam-essay-count').value) || 0
+      };
+      const scores = {
+        '选择': parseInt(document.getElementById('exam-select-score').value) || 2,
+        '填空': parseInt(document.getElementById('exam-blank-score').value) || 4,
+        '简答': parseInt(document.getElementById('exam-short-score').value) || 10,
+        '论述': parseInt(document.getElementById('exam-essay-score').value) || 15
+      };
+
+      // 随机抽取
+      const selected = { A: {}, B: {} };
+      for (const [type, count] of Object.entries(counts)) {
+        const pool = currentQuestions.filter(q => q.question_type === type);
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
+        selected.A[type] = shuffled.slice(0, count);
+        selected.B[type] = shuffled.slice(count, count * 2).concat(
+          shuffled.slice(0, count).sort(() => Math.random() - 0.5)
+        ).slice(0, count);
+      }
+
+      // 计算总分
+      let totalA = 0, totalB = 0;
+      for (const type of Object.keys(counts)) {
+        totalA += selected.A[type].length * scores[type];
+        totalB += selected.B[type].length * scores[type];
+      }
+
+      // 保存到数据库
+      const year = new Date().getFullYear();
+      await sb.from('td_exam_papers').insert([
+        { id: 'paper_a_' + Date.now(), course_id: currentCourse.id, year, paper_type: 'A卷', title: `${currentCourse.name}${year}年A卷`, questions_json: JSON.stringify(selected.A), total_score: totalA },
+        { id: 'paper_b_' + Date.now(), course_id: currentCourse.id, year, paper_type: 'B卷', title: `${currentCourse.name}${year}年B卷`, questions_json: JSON.stringify(selected.B), total_score: totalB }
+      ]);
+
+      showToast(`✅ 已生成A卷（${totalA}分）和B卷（${totalB}分）！`);
+      closeExamModal();
+
+      // 渲染预览
+      const body = document.getElementById('drawer-body');
+      body.innerHTML = renderExamPreview('A卷', selected.A, scores, totalA);
+      document.getElementById('drawer-title').textContent = `${currentCourse.name} 试卷预览`;
+      document.getElementById('drawer-overlay').classList.add('show');
+      document.getElementById('drawer').classList.add('show');
+    }
+
+    function renderExamPreview(type, questions, scores, total) {
+      let html = `
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="font-size:20px;font-weight:600;">${currentCourse.name} ${type}</div>
+          <div style="font-size:14px;color:#86868b;margin-top:4px;">总分：${total}分</div>
+        </div>
+      `;
+      const typeNames = { '选择': '一、选择题', '填空': '二、填空题', '简答': '三、简答题', '论述': '四、论述题' };
+      for (const [qtype, items] of Object.entries(questions)) {
+        if (items.length > 0) {
+          html += `
+            <div style="margin-bottom:20px;">
+              <div style="font-weight:600;margin-bottom:12px;">${typeNames[qtype]}（共${items.length}题，每题${scores[qtype]}分）</div>
+              ${items.map((q, i) => `
+                <div style="margin-bottom:12px;padding:12px;background:#f8f8fa;border-radius:8px;">
+                  <div style="font-size:14px;margin-bottom:4px;">${i + 1}. ${q.content}</div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+      }
+      html += `
+        <button class="btn btn-success" style="width:100%;" onclick="downloadExam()">
+          📥 导出为Word文件
+        </button>
+      `;
+      return html;
+    }
+
+    // ===== 上传试卷 =====
+    function openUploadExam() {
+      document.getElementById('drawer-title').textContent = '上传/添加试卷题目';
+      document.getElementById('drawer-body').innerHTML = `
+        <div class="upload-zone" onclick="document.getElementById('exam-file-input').click()">
+          <div class="upload-zone-icon">📤</div>
+          <div class="upload-zone-text">点击上传Word试卷<br><strong>系统会自动识别题目</strong></div>
+        </div>
+        <input type="file" id="exam-file-input" accept=".docx,.doc" style="display:none">
+        <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
+          <strong style="color:#1d1d1f;">或者手动添加题目：</strong>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="form-group">
+            <label class="form-label">题型</label>
+            <select class="form-select" id="manual-q-type">
+              <option value="选择">选择题</option>
+              <option value="填空">填空题</option>
+              <option value="简答">简答题</option>
+              <option value="论述">论述题</option>
+              <option value="实践">实践题</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">题目内容</label>
+            <textarea class="form-textarea" id="manual-q-content" placeholder="输入题目内容"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">分值</label>
+              <input type="number" class="form-input" id="manual-q-score" value="10">
+            </div>
+            <div class="form-group">
+              <label class="form-label">难度</label>
+              <select class="form-select" id="manual-q-difficulty">
+                <option value="易">易</option>
+                <option value="中" selected>中</option>
+                <option value="难">难</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">答案（可选）</label>
+            <textarea class="form-textarea" id="manual-q-answer" placeholder="输入答案" style="min-height:60px;"></textarea>
+          </div>
+          <button class="btn" style="width:100%;margin-top:12px;" onclick="saveManualQuestion()">
+            💾 添加到题库
+          </button>
+        </div>
+      `;
+      document.getElementById('drawer-overlay').classList.add('show');
+      document.getElementById('drawer').classList.add('show');
+    }
+
+    async function saveManualQuestion() {
+      const content = document.getElementById('manual-q-content').value.trim();
+      if (!content) { showToast('请输入题目内容'); return; }
+
+      const { error } = await sb.from('td_questions').insert({
+        id: 'q_' + Date.now(),
+        course_id: currentCourse.id,
+        question_type: document.getElementById('manual-q-type').value,
+        content,
+        score: parseInt(document.getElementById('manual-q-score').value) || 10,
+        difficulty: document.getElementById('manual-q-difficulty').value,
+        answer: document.getElementById('manual-q-answer').value
+      });
+
+      if (error) { showToast('保存失败'); return; }
+      showToast('题目已添加');
+      closeDrawer();
+      loadTabContent();
+    }
+
+    // ===== 模板库 =====
+    async function loadTemplates() {
+      const { data, error } = await sb.from('td_templates').select('*').order('created_at', { ascending: false });
+      if (error) { showToast('加载失败'); return; }
+      templates = data || [];
+      renderTemplates();
+    }
+
+    function renderTemplates() {
+      const list = document.getElementById('template-list');
+      if (templates.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📁</div>
+            <div class="empty-state-text">暂无存储的教务处模板</div>
+          </div>
+        `;
+        return;
+      }
+      list.innerHTML = templates.map(t => `
+        <div class="doc-item" onclick="openTemplate('${t.id}')">
+          <div class="doc-item-icon">📄</div>
+          <div class="doc-item-info">
+            <div class="doc-item-title">${t.template_name}</div>
+            <div class="doc-item-meta">${t.doc_type} · ${new Date(t.created_at).toLocaleDateString('zh-CN')}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openUploadTemplate() {
+      document.getElementById('drawer-title').textContent = '上传教务处模板';
+      document.getElementById('drawer-body').innerHTML = `
+        <div class="upload-zone">
+          <div class="upload-zone-icon">📤</div>
+          <div class="upload-zone-text">点击选择 Word 模板文件</div>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="form-group">
+            <label class="form-label">模板名称</label>
+            <input type="text" class="form-input" id="template-name" placeholder="如：2026年大纲模板">
+          </div>
+          <div class="form-group">
+            <label class="form-label">文档类型</label>
+            <select class="form-select" id="template-type">
+              <option value="大纲">大纲</option>
+              <option value="教案">教案</option>
+              <option value="指导书">指导书</option>
+              <option value="教学手册">教学手册</option>
+            </select>
+          </div>
+          <button class="btn" style="width:100%;margin-top:12px;" onclick="saveTemplate()">
+            💾 保存模板
+          </button>
+        </div>
+      `;
+      document.getElementById('drawer-overlay').classList.add('show');
+      document.getElementById('drawer').classList.add('show');
+    }
+
+    async function saveTemplate() {
+      const name = document.getElementById('template-name').value;
+      const type = document.getElementById('template-type').value;
+      if (!name) { showToast('请输入模板名称'); return; }
+
+      const { error } = await sb.from('td_templates').insert({
+        id: 'tmpl_' + Date.now(),
+        template_name: name,
+        doc_type: type
+      });
+
+      if (error) { showToast('保存失败'); return; }
+      showToast('模板已保存');
+      closeDrawer();
+      loadTemplates();
+    }
+
+    // ===== 工具函数 =====
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ===== 初始化 =====
+    loadCourses();
+  </script>
+</body>
+</html>
