@@ -737,11 +737,12 @@
         manual: '教学手册', application: '申报表'
       };
       const docType = typeMap[currentTab];
+      uploadedFile = null; // 重置
       document.getElementById('drawer-title').textContent = `上传${docType}`;
       document.getElementById('drawer-body').innerHTML = `
         <div class="upload-zone" onclick="document.getElementById('file-input').click()">
           <div class="upload-zone-icon">📤</div>
-          <div class="upload-zone-text">点击选择 Word 文件<br><strong>或拖拽文件到此处</strong></div>
+          <div class="upload-zone-text" id="upload-zone-text">点击选择 Word 文件<br><strong>或拖拽文件到此处</strong></div>
         </div>
         <input type="file" id="file-input" accept=".docx,.doc" style="display:none" onchange="handleFileUpload(this)">
         <div style="margin-top:20px;">
@@ -753,11 +754,14 @@
             <label class="form-label">文档标题</label>
             <input type="text" class="form-input" id="doc-title" placeholder="如：故事片创作实践大纲">
           </div>
-          <button class="btn" style="width:100%;margin-top:12px;" onclick="saveDocFromFile()">
+          <button class="btn" id="btn-save-doc" style="width:100%;margin-top:12px;" onclick="saveDocFromFile()">
             💾 保存文档
           </button>
+          <div style="margin-top:16px;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:12px;color:#856404;" id="upload-hint">
+            💡 提示：请先点击上方区域选择Word文件，再点击保存
+          </div>
           <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;color:#666;">
-            <strong style="color:#1d1d1f;">提示：</strong>上传后系统会自动解析Word内容并结构化存储，方便以后重复使用。
+            <strong style="color:#1d1d1f;">说明：</strong>上传后系统会自动解析Word内容并结构化存储，方便以后重复使用。
           </div>
         </div>
       `;
@@ -769,42 +773,63 @@
     function handleFileUpload(input) {
       if (input.files.length > 0) {
         uploadedFile = input.files[0];
-        document.querySelector('.upload-zone-text').innerHTML =
-          `<strong>已选择：${uploadedFile.name}</strong><br>点击可重新选择`;
+        document.getElementById('upload-zone-text').innerHTML =
+          `<strong>✅ 已选择：${uploadedFile.name}</strong><br>点击可重新选择`;
+        document.getElementById('upload-hint').style.background = '#d4edda';
+        document.getElementById('upload-hint').style.borderColor = '#28a745';
+        document.getElementById('upload-hint').style.color = '#155724';
+        document.getElementById('upload-hint').innerHTML = '✅ 文件已选择，可以保存了';
+        document.getElementById('btn-save-doc').classList.remove('btn-secondary');
       }
     }
 
     async function saveDocFromFile() {
-      if (!uploadedFile) { showToast('请先选择文件'); return; }
       const year = document.getElementById('doc-year').value;
-      const title = document.getElementById('doc-title').value;
+      const title = document.getElementById('doc-title').value.trim();
       const typeMap = {
         outline: '大纲', teaching: '教案', guide: '指导书',
         manual: '教学手册', application: '申报表'
       };
       const docType = typeMap[currentTab];
 
-      // 读取文件内容并解析
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const arrayBuffer = e.target.result;
-        // 将文件转为 base64 存储
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      if (!title) {
+        showToast('请填写文档标题');
+        document.getElementById('doc-title').focus();
+        return;
+      }
 
+      if (!uploadedFile) {
+        // 没有文件时，直接保存记录（后续可再上传文件）
         const id = 'doc_' + Date.now();
         const { error } = await sb.from('td_documents').insert({
           id, course_id: currentCourse.id, doc_type: docType,
-          year: parseInt(year), title: title || `${currentCourse.name}${docType}`,
-          content_json: JSON.stringify({ _placeholder: true }), // 后续用Python解析
-          original_file_name: uploadedFile.name
+          year: parseInt(year) || new Date().getFullYear(),
+          title: title,
+          content_json: JSON.stringify({}),
+          original_file_name: null
         });
 
-        if (error) { showToast('保存失败'); return; }
-        showToast('文档已保存，请用Python工具解析内容');
+        if (error) { showToast('保存失败'); console.error(error); return; }
+        showToast('文档已保存（可稍后上传Word文件）');
         closeDrawer();
         loadTabContent();
-      };
-      reader.readAsArrayBuffer(uploadedFile);
+        return;
+      }
+
+      // 有文件时，直接保存记录（文件名已记录，后续用Python工具解析内容）
+      const id = 'doc_' + Date.now();
+      const { error } = await sb.from('td_documents').insert({
+        id, course_id: currentCourse.id, doc_type: docType,
+        year: parseInt(year) || new Date().getFullYear(),
+        title: title,
+        content_json: JSON.stringify({ _placeholder: true }),
+        original_file_name: uploadedFile.name
+      });
+
+      if (error) { showToast('保存失败'); console.error(error); return; }
+      showToast('文档已保存，请用Python工具解析内容');
+      closeDrawer();
+      loadTabContent();
     }
 
     // ===== 打开文档抽屉 =====
