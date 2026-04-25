@@ -927,31 +927,26 @@
       document.getElementById('drawer-title').textContent = doc.title || '文档详情';
       const content = JSON.parse(doc.content_json || '{}');
       
-      // 字段名称映射（显示更友好）
+      // 字段名称映射
       const fieldLabels = {
-        courseName: '课程名称',
-        credit: '学分',
-        hours: '学时',
-        prerequisites: '先修课程',
-        objectives: '教学目标',
-        teachingFocus: '教学重难点',
-        assessment: '考核方式',
-        textbook: '教材/参考书',
-        _rawText: '原始文本'
+        courseName: '课程名称', credit: '学分', hours: '学时',
+        prerequisites: '先修课程', objectives: '教学目标',
+        teachingFocus: '教学重难点', assessment: '考核方式',
+        textbook: '教材/参考书', _rawText: '原始文本'
       };
 
-      // 渲染内容字段
+      // 渲染已解析的字段
       let fieldsHtml = '';
       const validFields = Object.entries(content).filter(([key]) => !key.startsWith('_'));
       
       if (validFields.length > 0) {
         for (const [key, value] of validFields) {
           const label = fieldLabels[key] || key;
-          if (typeof value === 'string' && value.length > 200) {
+          if (typeof value === 'string' && value.length > 100) {
             fieldsHtml += `
               <div class="form-group">
                 <label class="form-label">${label}</label>
-                <textarea class="form-textarea" rows="4" readonly>${escapeHtml(value)}</textarea>
+                <textarea class="form-textarea" rows="3" readonly>${escapeHtml(value)}</textarea>
               </div>
             `;
           } else if (typeof value === 'string') {
@@ -973,19 +968,22 @@
       }
 
       const infoSection = `
-        <div style="margin-top:24px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
-          <div style="margin-bottom:8px;"><strong>原始文件：</strong>${doc.original_file_name || '无'}</div>
-          <div style="margin-bottom:8px;"><strong>上传时间：</strong>${new Date(doc.created_at).toLocaleString('zh-CN')}</div>
+        <div style="margin-top:16px;padding:16px;background:#f8f8fa;border-radius:12px;font-size:13px;">
+          <div style="margin-bottom:6px;"><strong>原始文件：</strong>${doc.original_file_name || '无'}</div>
+          <div style="margin-bottom:6px;"><strong>上传时间：</strong>${new Date(doc.created_at).toLocaleString('zh-CN')}</div>
           <div><strong>解析状态：</strong>${content._parsedAt ? '✅ 已解析' : '⏳ 待解析'}</div>
         </div>
       `;
 
       // 操作按钮
       const actionsHtml = `
-        <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
           ${doc.file_data ? `
-            <button class="btn" onclick="downloadDoc('${doc.id}')">
-              📥 下载原文件
+            <button class="btn" onclick="previewDoc('${index}')">
+              👁️ 预览文档
+            </button>
+            <button class="btn btn-secondary" onclick="downloadDoc('${doc.id}')">
+              📥 下载
             </button>
             <button class="btn btn-secondary" onclick="reuploadDoc('${doc.id}')">
               🔄 重新上传
@@ -996,20 +994,20 @@
             </button>
           `}
           <button class="btn btn-danger" onclick="deleteDoc('${doc.id}')">
-            🗑️ 删除文档
+            🗑️ 删除
           </button>
         </div>
       `;
 
       document.getElementById('drawer-body').innerHTML = `
-        <div style="margin-bottom:20px;">
+        <div style="margin-bottom:16px;">
           <span class="tag">${doc.doc_type}</span>
           <span style="font-size:12px;color:#86868b;margin-left:8px;">${doc.year || ''}年</span>
         </div>
         ${validFields.length > 0 ? fieldsHtml : `
-          <div class="empty-state" style="padding:40px;">
-            <div class="empty-state-icon">📄</div>
-            <div class="empty-state-text">该文档尚未解析<br>请上传 Word 文件自动解析</div>
+          <div style="padding:20px;background:#fff3cd;border-radius:12px;text-align:center;color:#856404;">
+            ⏳ 文档内容待解析<br>
+            <span style="font-size:12px;">点击"预览文档"可直接查看Word内容</span>
           </div>
         `}
         ${infoSection}
@@ -1017,6 +1015,68 @@
       `;
       document.getElementById('drawer-overlay').classList.add('show');
       document.getElementById('drawer').classList.add('show');
+    }
+    
+    // ===== 预览文档（直接从数据库读取file_data）=====
+    async function previewDoc(index) {
+      const doc = currentDocs[index];
+      if (!doc.file_data) {
+        showToast('没有文件数据');
+        return;
+      }
+      
+      try {
+        // 显示加载中
+        document.getElementById('drawer-title').textContent = '📖 加载预览中...';
+        document.getElementById('drawer-body').innerHTML = `
+          <div style="text-align:center;padding:60px;">
+            <div style="font-size:32px;margin-bottom:16px;">⏳</div>
+            <div>正在加载文档内容...</div>
+          </div>
+        `;
+        
+        // 解码base64
+        const binary = atob(doc.file_data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        
+        // 用mammoth解析Word
+        const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
+        const html = result.value;
+        
+        // 显示预览
+        document.getElementById('drawer-title').textContent = doc.title || '文档预览';
+        document.getElementById('drawer-body').innerHTML = `
+          <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn" onclick="openDocDrawer(${index})">← 返回详情</button>
+            <button class="btn btn-secondary" onclick="downloadDoc('${doc.id}')">📥 下载</button>
+          </div>
+          <div style="background:white;border:1px solid #eee;border-radius:12px;padding:24px;max-height:60vh;overflow-y:auto;font-size:14px;line-height:1.8;">
+            ${html || '<div style="color:#999;text-align:center;">文档内容为空</div>'}
+          </div>
+          ${result.messages && result.messages.length > 0 ? `
+            <div style="margin-top:12px;padding:12px;background:#fff3cd;border-radius:8px;font-size:12px;color:#856404;">
+              <strong>⚠️ 提示：</strong>${result.messages.map(m => m.message).join('；')}
+            </div>
+          ` : ''}
+        `;
+      } catch (e) {
+        console.error('预览失败:', e);
+        document.getElementById('drawer-title').textContent = '预览失败';
+        document.getElementById('drawer-body').innerHTML = `
+          <div style="text-align:center;padding:60px;">
+            <div style="font-size:48px;margin-bottom:16px;">❌</div>
+            <div style="color:#ff3b30;margin-bottom:16px;">预览失败</div>
+            <div style="font-size:12px;color:#666;">${e.message}</div>
+            <div style="margin-top:20px;">
+              <button class="btn" onclick="openDocDrawer(${index})">← 返回详情</button>
+              <button class="btn btn-secondary" onclick="downloadDoc('${doc.id}')">📥 下载查看</button>
+            </div>
+          </div>
+        `;
+      }
     }
     
     // HTML转义
